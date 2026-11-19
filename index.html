@@ -1,0 +1,1170 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<title>Air Synth — Live Hand-Gesture Instrument</title>
+<meta name="theme-color" content="#05050a">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Air Synth">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;600;700&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/tone@14.8.49/build/Tone.js"></script>
+<style>
+  :root{
+    --bg:#05050a; --panel:rgba(12,12,22,.82); --line:rgba(255,255,255,.09);
+    --txt:#ececf4; --mut:#8a8aa3; --L:#22d3ee; --R:#f472b6; --acc:#a3e635; --warn:#fb7185;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;background:var(--bg);color:var(--txt);font-family:"Space Grotesk",system-ui,sans-serif;overflow:hidden}
+  #stage{position:fixed;inset:0;width:100%;height:100%;display:block}
+  #cam{position:fixed;width:2px;height:2px;opacity:0;pointer-events:none;left:0;top:0}
+  #bar{position:fixed;top:0;left:0;right:0;display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;padding:10px 14px;
+       background:var(--panel);backdrop-filter:blur(10px);border-bottom:1px solid var(--line);z-index:5;font-size:13px}
+  #bar.hidden{display:none}
+  .brand{font-weight:700;letter-spacing:.14em;font-size:13px;margin-right:4px}
+  .brand b{color:var(--R)} .brand i{color:var(--L);font-style:normal}
+  .grp{display:flex;align-items:center;gap:6px}
+  .lbl{font:600 10px "JetBrains Mono",monospace;color:var(--mut);text-transform:uppercase;letter-spacing:.08em}
+  select,button{font:600 12px "Space Grotesk",sans-serif;color:var(--txt);background:rgba(255,255,255,.06);border:1px solid var(--line);
+       border-radius:8px;padding:6px 9px;cursor:pointer;outline:none}
+  select option{background:#111}
+  button:hover,select:hover{border-color:rgba(255,255,255,.25)}
+  .seg{display:flex;border:1px solid var(--line);border-radius:9px;overflow:hidden}
+  .seg button{border:0;border-radius:0;background:transparent;padding:6px 9px;border-right:1px solid var(--line)}
+  .seg button:last-child{border-right:0}
+  .seg button.on{background:var(--R);color:#0a0a0a}
+  #scenes button.on{background:var(--L)}
+  button.live{background:var(--warn);color:#0a0a0a;border-color:var(--warn)}
+  button.armed{background:#facc15;color:#0a0a0a;border-color:#facc15}
+  button.play{background:var(--acc);color:#0a0a0a;border-color:var(--acc)}
+  input[type=range]{accent-color:var(--R);width:90px}
+  #bpmVal{font:600 12px "JetBrains Mono",monospace;min-width:28px;display:inline-block}
+  .spacer{flex:1}
+  #start{position:fixed;inset:0;display:grid;place-items:center;z-index:20;
+         background:radial-gradient(1200px 600px at 20% 10%,rgba(34,211,238,.16),transparent 60%),radial-gradient(900px 600px at 90% 90%,rgba(244,114,182,.18),transparent 60%),#05050a}
+  .card{max-width:620px;width:calc(100% - 32px);padding:34px 32px;border:1px solid var(--line);border-radius:20px;background:rgba(10,10,18,.85)}
+  .card h1{margin:0 0 6px;font-size:40px;letter-spacing:.06em;line-height:1}
+  .card h1 span{background:linear-gradient(90deg,var(--L),var(--R));-webkit-background-clip:text;background-clip:text;color:transparent}
+  .card p{color:var(--mut);margin:8px 0 18px;line-height:1.5}
+  .two{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin:18px 0 22px}
+  .two div{border:1px solid var(--line);border-radius:12px;padding:12px 14px;font-size:13px;line-height:1.55}
+  .two h4{margin:0 0 6px;font:700 11px "JetBrains Mono",monospace;letter-spacing:.1em}
+  .two .l h4{color:var(--L)} .two .r h4{color:var(--R)}
+  #startBtn{font-size:16px;padding:14px 26px;border-radius:12px;background:linear-gradient(90deg,var(--L),var(--R));color:#05050a;border:0;font-weight:700;letter-spacing:.05em}
+  #startBtn:disabled{opacity:.5;cursor:wait}
+  #status{margin-top:14px;font:12px "JetBrains Mono",monospace;color:var(--mut);min-height:16px}
+  .small{font-size:12px;color:var(--mut)}
+  #help{position:fixed;inset:0;background:rgba(5,5,10,.86);backdrop-filter:blur(6px);display:none;place-items:center;z-index:15}
+  #help.show{display:grid}
+  #help .card{max-width:760px;max-height:88vh;overflow:auto}
+  #help h3{margin:18px 0 6px;font:700 12px "JetBrains Mono",monospace;letter-spacing:.12em}
+  #help ul{margin:0;padding-left:18px;line-height:1.65;font-size:14px}
+  kbd{font:600 11px "JetBrains Mono",monospace;border:1px solid var(--line);border-bottom-width:2px;border-radius:5px;padding:1px 5px;background:rgba(255,255,255,.05)}
+  #toast{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%) scale(.96);padding:14px 22px;border-radius:14px;background:rgba(10,10,18,.9);
+         border:1px solid var(--line);font:700 18px "Space Grotesk";letter-spacing:.06em;opacity:0;transition:.2s;pointer-events:none;z-index:12}
+  #toast.show{opacity:1;transform:translate(-50%,-50%) scale(1)}
+  #menuBtn{display:none;font-size:16px;padding:6px 12px}
+  @media (max-width:760px){.two{grid-template-columns:1fr}.card h1{font-size:30px}}
+  @media (max-width:900px), (pointer:coarse) and (max-height:600px){
+    #bar{flex-wrap:nowrap;gap:8px;padding:calc(6px + env(safe-area-inset-top)) calc(10px + env(safe-area-inset-right)) 6px calc(10px + env(safe-area-inset-left))}
+    #bar .opt{display:none}
+    #bar.open{flex-wrap:wrap;max-height:75vh;overflow-y:auto}
+    #bar.open .opt{display:flex}
+    #bar.open .spacer{display:none}
+    #menuBtn{display:block;margin-left:auto}
+    .brand{font-size:11px}
+    .grp.modes{flex:1;min-width:0}
+    .grp.modes .lbl{display:none}
+    #modes{overflow-x:auto;scrollbar-width:none;flex-wrap:nowrap;max-width:100%}
+    #modes::-webkit-scrollbar{display:none}
+    #modes button{white-space:nowrap}
+    #bar.open .grp.modes{flex-basis:100%;order:-1}
+  }
+  @media (pointer:coarse){
+    select,button{padding:9px 12px;font-size:13px}
+    .seg button{padding:9px 11px}
+    input[type=range]{width:130px}
+  }
+  @media (max-width:520px){.brand{display:none}}
+</style>
+</head>
+<body>
+<canvas id="stage"></canvas>
+<video id="cam" playsinline muted></video>
+
+<header id="bar" class="hidden">
+  <div class="brand">AIR<b>·</b><i>SYNTH</i></div>
+  <div class="grp opt"><span class="lbl">Key</span><select id="key"></select><select id="scale"></select></div>
+  <div class="grp opt"><span class="lbl">BPM</span><input type="range" id="bpm" min="70" max="160" step="1"><span id="bpmVal"></span></div>
+  <div class="grp opt"><span class="lbl">Kit</span><select id="kit"></select></div>
+  <div class="grp modes"><span class="lbl">Mode</span><div class="seg" id="modes"></div></div>
+  <div class="grp opt"><span class="lbl">Chord sound</span><select id="chordSound"></select></div>
+  <div class="grp opt"><span class="lbl">Scene</span><div class="seg" id="scenes"></div></div>
+  <div class="grp opt"><button id="loopBtn">Loop</button><button id="loopClr" title="Clear loop (K)">✕</button></div>
+  <div class="grp opt"><button id="recBtn">● Rec</button></div>
+  <div class="spacer"></div>
+  <div class="grp opt">
+    <button id="quantBtn" title="Snap gestures to the 1/16 grid">Quantize: on</button>
+    <button id="calBtn" title="Map your reach">Calibrate</button>
+    <button id="panicBtn" title="Stop all notes (P)">Panic</button>
+    <button id="fsBtn" title="Fullscreen (F)">⛶</button>
+    <button id="helpBtn" title="Help (H)">?</button>
+  </div>
+  <button id="menuBtn" aria-label="Menu">☰</button>
+</header>
+
+<div id="start">
+  <div class="card">
+    <h1><span>AIR SYNTH</span></h1>
+    <p>Play beats and synths live with your hands. Left hand runs the drums, right hand plays the instrument. Everything stays locked to the key and the beat.</p>
+    <div class="two">
+      <div class="l"><h4>LEFT HAND · BEATS</h4>1–5 fingers = drum layers<br>Fist = drop · open = slam back<br>Pinch + up/down = drum filter</div>
+      <div class="r"><h4>RIGHT HAND · SYNTH</h4>Pinch thumb + index = play<br>Left ↔ right = note · up ↕ down = filter<br>Spread other fingers = reverb/delay</div>
+    </div>
+    <button id="startBtn">START</button>
+    <div id="status"></div>
+    <p class="small" style="margin-top:16px">Works on a laptop (Chrome) or phone. On a phone, put it on a stand about 60–80 cm away, landscape, so both hands are free. On iPhone, turn the silent switch off. Use good light on your hands. The camera feed stays on your device and is never uploaded.</p>
+  </div>
+</div>
+
+<div id="help"><div class="card">
+  <h1 style="font-size:26px"><span>HOW TO PLAY</span></h1>
+  <h3 style="color:var(--L)">LEFT HAND — BEATS</h3>
+  <ul>
+    <li>Hold up <b>1–5 fingers</b> to set drum layers: kick → clap → hats → percussion → full groove. Changes land on the next beat.</li>
+    <li><b>Fist</b> = DROP. The beat cuts and the mix goes muffled. <b>Open your hand</b> and the beat slams back on the next bar with an impact.</li>
+    <li><b>Pinch + move up/down</b> sweeps a filter over the drums. It stays where you let go.</li>
+  </ul>
+  <h3 style="color:var(--R)">RIGHT HAND — INSTRUMENT</h3>
+  <ul>
+    <li><b>Pinch thumb + index</b> to play. Left ↔ right picks the note or chord (always in key). Up ↕ down sets the filter.</li>
+    <li>While pinching, <b>spread your other fingers</b> to add reverb and delay. Curl them to keep it dry.</li>
+    <li><b>Lead</b> mono lead with glide · <b>Bass</b> acid bass · <b>Arp</b> rolling arpeggio, spread fingers = more octaves · <b>Chords</b> diatonic chords · <b>Theremin</b> continuous pitch · <b>FX</b> DJ filter: down = low-pass, up = high-pass, right = delay throw.</li>
+  </ul>
+  <h3 style="color:var(--acc)">BOTH HANDS</h3>
+  <ul>
+    <li><b>Pinch with both hands and hold</b> to start a RISER. Pull your hands apart to build it. Let go and the impact lands on the next bar.</li>
+  </ul>
+  <h3>SCENES · LOOPER · REC</h3>
+  <ul>
+    <li><b>Intro</b> filtered, 2 layers max · <b>Groove</b> full · <b>Build</b> 4-bar snare roll and riser, then auto-drop · <b>Drop</b> everything in · <b>Break</b> drums out.</li>
+    <li><b>Loop</b>: press once and it records 4 bars of your playing from the next bar, then loops it. Press again to overdub another pass. ✕ clears it.</li>
+    <li><b>Rec</b> records the master output and downloads a .webm audio file when you stop.</li>
+    <li><b>Calibrate</b>: move both hands across your full comfortable reach for 6 seconds.</li>
+  </ul>
+  <h3>KEYBOARD</h3>
+  <ul>
+    <li><kbd>1</kbd>–<kbd>6</kbd> modes · <kbd>Z</kbd><kbd>X</kbd><kbd>C</kbd><kbd>V</kbd><kbd>B</kbd> scenes · <kbd>L</kbd> loop/overdub · <kbd>K</kbd> clear loop · <kbd>R</kbd> record · <kbd>Space</kbd> play/pause · <kbd>P</kbd> panic · <kbd>F</kbd> fullscreen · <kbd>H</kbd> help</li>
+  </ul>
+  <p style="margin-top:18px"><button id="helpClose">Got it</button></p>
+</div></div>
+
+<div id="toast"></div>
+
+<script type="module">
+import { FilesetResolver, HandLandmarker } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/vision_bundle.mjs";
+
+const WASM = "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm";
+const MODEL = "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task";
+
+/* ================= device profile ================= */
+const IS_MOBILE = (matchMedia("(pointer:coarse)").matches && Math.min(screen.width, screen.height) < 900) || /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+const GLOW = IS_MOBILE ? 0 : 1;   // canvas blur is expensive on phones
+
+/* ================= helpers ================= */
+const $ = s => document.querySelector(s);
+const clamp = (v, a = 0, b = 1) => Math.min(b, Math.max(a, v));
+const lerp = (a, b, t) => a + (b - a) * t;
+const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+const mod = (n, m) => ((n % m) + m) % m;
+const store = {
+  get(k, d) { try { const v = localStorage.getItem("gs_" + k); return v === null ? d : JSON.parse(v); } catch (e) { return d; } },
+  set(k, v) { try { localStorage.setItem("gs_" + k, JSON.stringify(v)); } catch (e) {} }
+};
+let toastT;
+function toast(msg, color) {
+  const t = $("#toast"); t.textContent = msg; t.style.color = color || "var(--txt)";
+  t.classList.add("show"); clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove("show"), 900);
+}
+
+/* ================= music theory ================= */
+const NOTE_NAMES = ["C","C#","D","D#","E","F","F#","G","G#","A","A#","B"];
+const SCALES = {
+  "Minor": [0,2,3,5,7,8,10],
+  "Major": [0,2,4,5,7,9,11],
+  "Dorian (Kafi)": [0,2,3,5,7,9,10],
+  "Phrygian": [0,1,3,5,7,8,10],
+  "Harmonic Minor": [0,2,3,5,7,8,11],
+  "Bhairav": [0,1,4,5,7,8,11],
+  "Pentatonic Minor": [0,3,5,7,10],
+  "Pentatonic Major": [0,2,4,7,9]
+};
+const SC = () => SCALES[state.scale];
+function scaleMidi(deg, oct) {
+  const s = SC(), n = s.length;
+  return 12 * (oct + 1) + state.key + s[mod(deg, n)] + 12 * Math.floor(deg / n);
+}
+const mname = m => Tone.Frequency(m, "midi").toNote();
+const mtof = m => 440 * Math.pow(2, (m - 69) / 12);
+const noteName = m => NOTE_NAMES[mod(m, 12)] + (Math.floor(m / 12) - 1);
+function nearestScaleMidi(raw) {
+  let best = 0, bd = 1e9;
+  for (let d = -8; d < 30; d++) { const m = scaleMidi(d, 4); const dd = Math.abs(m - raw); if (dd < bd) { bd = dd; best = m; } }
+  return best;
+}
+function chordNotes(zone, oct, sev) {
+  const degs = [zone, zone + 2, zone + 4]; if (sev) degs.push(zone + 6);
+  return degs.map(d => scaleMidi(d, oct));
+}
+function chordName(zone) {
+  const n = chordNotes(zone, 3, false), i3 = n[1] - n[0], i5 = n[2] - n[0];
+  const q = (i3 === 4 && i5 === 7) ? "" : (i3 === 3 && i5 === 7) ? "m" : (i3 === 3 && i5 === 6) ? "°" : (i3 === 4 && i5 === 8) ? "+" : "sus";
+  return NOTE_NAMES[mod(n[0], 12)] + q;
+}
+
+/* ================= drum kits (16-step, x=hit o=ghost) ================= */
+const KITS = {
+  "House":  { swing: 0.08, duck: 0.45, layers: [
+    { kick: "x...x...x...x..." },
+    { clap: "....x.......x..." },
+    { ohh:  "..x...x...x...x." },
+    { shk:  "oxoxoxoxoxoxoxox", perc: "...x.....x..x..." },
+    { chh:  "x.o.x.o.x.o.x.o.", ride: "x...x...x...x...", kick: "x...x...x...x.o." } ] },
+  "Techno": { swing: 0, duck: 0.5, layers: [
+    { kick: "x...x...x...x..." },
+    { chh:  "..x...x...x...x." },
+    { clap: "....x.......x..." },
+    { ride: "x.x.x.x.x.x.x.x.", perc: "..o..o....o..o.." },
+    { shk:  "oxoxoxoxoxoxoxox", perc: "x..x..x..x..x.x.", kick: "x...x...x...x..o" } ] },
+  "Trap":   { swing: 0, duck: 0.3, layers: [
+    { k808: "x......x..x....." },
+    { snare:"........x.......", clap: "........x......." },
+    { chh:  "x.x.x.x.x.x.x.x." },
+    { chh:  "x.x.x.xxx.x.xxxx", ohh: "..............x." },
+    { perc: "...o.....o...o..", k808: "x......x..x...x.", snare: "........x......o" } ] },
+  "Dhol":   { swing: 0.12, duck: 0.35, layers: [
+    { dagga:"x.....x.x......." },
+    { tilli:"...x.x.x...x.x.x", slap: "...x.......x...." },
+    { kick: "x...x...x...x..." },
+    { shk:  "oxoxoxoxoxoxoxox" },
+    { clap: "....x.......x...", dagga: "x.....x.x.....o.", perc: "..o.......o....." } ] }
+};
+const patCache = {};
+function getPattern(kit, L) {
+  const k = kit + L; if (patCache[k]) return patCache[k];
+  const out = {};
+  KITS[kit].layers.slice(0, L).forEach(layer => {
+    for (const v in layer) {
+      if (!out[v]) out[v] = new Array(16).fill(0);
+      [...layer[v]].forEach((c, i) => { const vel = c === "x" ? 1 : c === "o" ? 0.5 : 0; out[v][i] = Math.max(out[v][i], vel); });
+    }
+  });
+  return (patCache[k] = out);
+}
+
+/* ================= state ================= */
+const MODES = [["lead","Lead"],["bass","Bass"],["arp","Arp"],["chords","Chords"],["theremin","Theremin"],["fx","FX"]];
+const SCENES = ["Intro","Groove","Build","Drop","Break"];
+const CHORD_SOUNDS = ["Pad","Keys","Supersaw","Pluck"];
+const state = {
+  key: store.get("key", 2), scale: store.get("scale", "Minor"), bpm: store.get("bpm", 122),
+  kit: store.get("kit", "House"), chordSound: store.get("chordSound", "Pad"), quant: store.get("quant", true),
+  mode: "lead", scene: "Groove", cap: 5,
+  fingerLayers: 0, pendingLayers: null,
+  dropped: false, dropPending: false, undropPending: false,
+  build: null, buildPending: false, impactPending: false,
+  riser: { cand: 0, on: false, since: 0, amt: 0, stopPending: false },
+  fxActive: false, started: false, recOn: false
+};
+if (!SCALES[state.scale]) state.scale = "Minor";
+if (!KITS[state.kit]) state.kit = "House";
+const DEFAULT_CAL = { R: { x0: .52, x1: .96, y0: .14, y1: .84 }, L: { x0: .04, x1: .48, y0: .14, y1: .84 } };
+let cal = store.get("cal", DEFAULT_CAL);
+const ui = { step: -1, bar: 0, drumF: 20000, flash: 0, flashTxt: "", fps: 0 };
+
+/* ================= audio engine ================= */
+const A = {}, D = {};
+function buildAudio() {
+  const master = new Tone.Limiter(-1).toDestination();
+  A.recorder = new Tone.Recorder(); master.connect(A.recorder);
+  const comp = new Tone.Compressor({ threshold: -14, ratio: 3, attack: 0.008, release: 0.12 }).connect(master);
+  const eq = new Tone.EQ3({ low: 1.5, mid: 0, high: 1 }).connect(comp);
+  A.djHP = new Tone.Filter({ type: "highpass", frequency: 20, rolloff: -24, Q: 0.8 }).connect(eq);
+  A.djLP = new Tone.Filter({ type: "lowpass", frequency: 20000, rolloff: -24, Q: 0.8 }).connect(A.djHP);
+  A.mix = A.djLP;
+  A.reverb = new Tone.Reverb({ decay: 4.5, preDelay: 0.02, wet: 1 }).connect(A.mix);
+  A.delay = new Tone.FeedbackDelay({ delayTime: "8n.", feedback: 0.35, wet: 1 }).connect(A.mix);
+  A.revSend = new Tone.Gain(0.15).connect(A.reverb);
+  A.dlySend = new Tone.Gain(0.08).connect(A.delay);
+  // drums
+  A.drumMute = new Tone.Gain(1).connect(A.mix);
+  const drumRev = new Tone.Gain(0.06).connect(A.reverb); A.drumMute.connect(drumRev);
+  A.drumFilter = new Tone.Filter({ type: "lowpass", frequency: 20000, rolloff: -24, Q: 1 }).connect(A.drumMute);
+  A.drumBus = new Tone.Gain(0.9).connect(A.drumFilter);
+  // instruments → sidechain gain → mix + sends
+  A.side = new Tone.Gain(1).connect(A.mix); A.side.connect(A.revSend); A.side.connect(A.dlySend);
+  A.instBus = new Tone.Gain(0.85).connect(A.side);
+  buildDrums();
+  A.voices = { lead: makeLead(), bass: makeBass(), arp: makeArp(), chords: makeChord(state.chordSound) };
+  A.loopVoices = { lead: makeLead(), bass: makeBass(), arp: makeArp(), chords: makeChord(state.chordSound) };
+  buildTheremin(); buildRiser(); buildImpact();
+}
+const outFilter = opts => new Tone.Filter(opts).connect(A.instBus);
+function makeLead() {
+  const f = outFilter({ type: "lowpass", frequency: 2400, Q: 1.5, rolloff: -24 });
+  const s = new Tone.MonoSynth({ volume: -11, portamento: 0.035,
+    oscillator: { type: "fatsawtooth", count: 3, spread: 22 },
+    envelope: { attack: 0.006, decay: 0.25, sustain: 0.65, release: 0.28 },
+    filter: { type: "lowpass", Q: 1, rolloff: -12 },
+    filterEnvelope: { attack: 0.004, decay: 0.35, sustain: 0.55, release: 0.35, baseFrequency: 500, octaves: 3.2 } }).connect(f);
+  return { s, f, mono: true };
+}
+function makeBass() {
+  const f = outFilter({ type: "lowpass", frequency: 900, Q: 2.5, rolloff: -24 });
+  const dist = new Tone.Distortion({ distortion: 0.3, wet: 0.35 }).connect(f);
+  const s = new Tone.MonoSynth({ volume: -9, portamento: 0.03,
+    oscillator: { type: "sawtooth" },
+    envelope: { attack: 0.002, decay: 0.22, sustain: 0.45, release: 0.12 },
+    filter: { type: "lowpass", Q: 6, rolloff: -24 },
+    filterEnvelope: { attack: 0.002, decay: 0.2, sustain: 0.25, release: 0.12, baseFrequency: 140, octaves: 4.2 } }).connect(dist);
+  return { s, f, dist, mono: true };
+}
+function makeArp() {
+  const f = outFilter({ type: "lowpass", frequency: 3000, Q: 1, rolloff: -12 });
+  const s = new Tone.PolySynth(Tone.Synth, { volume: -12,
+    oscillator: { type: "fattriangle", count: 2, spread: 12 },
+    envelope: { attack: 0.002, decay: 0.22, sustain: 0.08, release: 0.35 } }).connect(f);
+  s.maxPolyphony = 24;
+  return { s, f };
+}
+const SAL = { C3:"C3.mp3","D#3":"Ds3.mp3","F#3":"Fs3.mp3",A3:"A3.mp3",C4:"C4.mp3","D#4":"Ds4.mp3","F#4":"Fs4.mp3",A4:"A4.mp3",C5:"C5.mp3","D#5":"Ds5.mp3","F#5":"Fs5.mp3",A5:"A5.mp3" };
+function makeKeys(f) {
+  const fm = new Tone.PolySynth(Tone.FMSynth, { volume: -13, harmonicity: 3, modulationIndex: 6,
+    envelope: { attack: 0.004, decay: 1.2, sustain: 0.25, release: 1.2 },
+    modulationEnvelope: { attack: 0.002, decay: 0.4, sustain: 0.1, release: 0.6 } }).connect(f);
+  fm.maxPolyphony = 24;
+  let smp = null;
+  try { smp = new Tone.Sampler({ urls: SAL, baseUrl: "https://tonejs.github.io/audio/salamander/", release: 1.2, volume: -5, onerror: () => {} }).connect(f); } catch (e) { smp = null; }
+  const ok = () => smp && smp.loaded;
+  return {
+    triggerAttack: (n, t, v) => (ok() ? smp : fm).triggerAttack(n, t, v),
+    triggerRelease: (n, t) => { fm.triggerRelease(n, t); if (ok()) { try { smp.triggerRelease(n, t); } catch (e) {} } },
+    triggerAttackRelease: (n, d, t, v) => (ok() ? smp : fm).triggerAttackRelease(n, d, t, v),
+    releaseAll: t => { fm.releaseAll(t); if (ok()) { try { smp.releaseAll(t); } catch (e) {} } },
+    dispose: () => { fm.dispose(); if (smp) smp.dispose(); }
+  };
+}
+function makeChord(sound) {
+  const f = outFilter({ type: "lowpass", frequency: 4000, Q: 0.8, rolloff: -12 });
+  let s;
+  if (sound === "Keys") s = makeKeys(f);
+  else {
+    const P = {
+      Pad:      { volume: -17, oscillator: { type: "fatsawtooth", count: 3, spread: 35 }, envelope: { attack: 0.35, decay: 0.6, sustain: 0.85, release: 1.6 } },
+      Supersaw: { volume: -16, oscillator: { type: "fatsawtooth", count: 5, spread: 45 }, envelope: { attack: 0.01, decay: 0.3, sustain: 0.75, release: 0.45 } },
+      Pluck:    { volume: -11, oscillator: { type: "fatsquare", count: 2, spread: 10 }, envelope: { attack: 0.002, decay: 0.35, sustain: 0, release: 0.4 } }
+    }[sound] || {};
+    s = new Tone.PolySynth(Tone.Synth, P).connect(f); s.maxPolyphony = 24;
+  }
+  return { s, f, sound };
+}
+function rebuildChordVoices() {
+  for (const set of [A.voices, A.loopVoices]) {
+    const old = set.chords; try { old.s.releaseAll(); } catch (e) {}
+    setTimeout(() => { try { old.s.dispose(); old.f.dispose(); } catch (e) {} }, 2500);
+    set.chords = makeChord(state.chordSound);
+  }
+}
+function ns(opts, filt) { const fl = new Tone.Filter(filt).connect(A.drumBus); return new Tone.NoiseSynth(opts).connect(fl); }
+function buildDrums() {
+  D.kick = new Tone.MembraneSynth({ volume: -3, pitchDecay: 0.045, octaves: 6, oscillator: { type: "sine" }, envelope: { attack: 0.001, decay: 0.42, sustain: 0, release: 0.1 } }).connect(A.drumBus);
+  const d808 = new Tone.Distortion({ distortion: 0.2, wet: 0.35 }).connect(A.drumBus);
+  D.k808 = new Tone.MembraneSynth({ volume: -4, pitchDecay: 0.07, octaves: 3.5, oscillator: { type: "sine" }, envelope: { attack: 0.001, decay: 1.3, sustain: 0, release: 0.3 } }).connect(d808);
+  D.snareN = ns({ volume: -11, noise: { type: "white" }, envelope: { attack: 0.001, decay: 0.17, sustain: 0, release: 0.05 } }, { type: "highpass", frequency: 1400 });
+  D.snareB = new Tone.MembraneSynth({ volume: -14, pitchDecay: 0.01, octaves: 2, envelope: { attack: 0.001, decay: 0.11, sustain: 0, release: 0.05 } }).connect(A.drumBus);
+  const clapF = { type: "bandpass", frequency: 1300, Q: 1.4 };
+  D.clapA = ns({ volume: -10, noise: { type: "pink" }, envelope: { attack: 0.001, decay: 0.015, sustain: 0, release: 0.01 } }, clapF);
+  D.clapB = ns({ volume: -10, noise: { type: "pink" }, envelope: { attack: 0.001, decay: 0.015, sustain: 0, release: 0.01 } }, clapF);
+  D.clapC = ns({ volume: -8,  noise: { type: "pink" }, envelope: { attack: 0.001, decay: 0.16, sustain: 0, release: 0.08 } }, clapF);
+  D.chh = ns({ volume: -17, noise: { type: "white" }, envelope: { attack: 0.001, decay: 0.04, sustain: 0, release: 0.02 } }, { type: "highpass", frequency: 7500 });
+  D.ohh = ns({ volume: -19, noise: { type: "white" }, envelope: { attack: 0.002, decay: 0.3, sustain: 0, release: 0.15 } }, { type: "highpass", frequency: 6500 });
+  D.shk = ns({ volume: -23, noise: { type: "white" }, envelope: { attack: 0.006, decay: 0.05, sustain: 0, release: 0.02 } }, { type: "bandpass", frequency: 6500, Q: 1 });
+  D.ride = ns({ volume: -26, noise: { type: "white" }, envelope: { attack: 0.002, decay: 0.7, sustain: 0, release: 0.3 } }, { type: "bandpass", frequency: 9000, Q: 0.7 });
+  D.perc = new Tone.MembraneSynth({ volume: -15, pitchDecay: 0.008, octaves: 2, envelope: { attack: 0.001, decay: 0.09, sustain: 0, release: 0.05 } }).connect(A.drumBus);
+  D.dagga = new Tone.MembraneSynth({ volume: -3, pitchDecay: 0.06, octaves: 2.5, envelope: { attack: 0.001, decay: 0.5, sustain: 0, release: 0.1 } }).connect(A.drumBus);
+  D.tilli = new Tone.MembraneSynth({ volume: -9, pitchDecay: 0.004, octaves: 1.2, envelope: { attack: 0.001, decay: 0.08, sustain: 0, release: 0.05 } }).connect(A.drumBus);
+  D.slap = ns({ volume: -15, noise: { type: "white" }, envelope: { attack: 0.001, decay: 0.035, sustain: 0, release: 0.02 } }, { type: "bandpass", frequency: 2800, Q: 1.2 });
+  D.roll = ns({ volume: -10, noise: { type: "white" }, envelope: { attack: 0.001, decay: 0.12, sustain: 0, release: 0.05 } }, { type: "bandpass", frequency: 2200, Q: 0.9 });
+}
+const rootHz = oct => mtof(12 * (oct + 1) + state.key);
+function duck(t) {
+  const d = KITS[state.kit].duck, g = A.side.gain;
+  try { g.cancelScheduledValues(t); g.setValueAtTime(1, t); g.linearRampToValueAtTime(1 - d, t + 0.01); g.linearRampToValueAtTime(1, t + 0.2); } catch (e) {}
+}
+const V = {
+  kick:  (t, v) => { D.kick.triggerAttackRelease(rootHz(1), 0.2, t, v); duck(t); },
+  k808:  (t, v) => { D.k808.triggerAttackRelease(rootHz(1), 0.9, t, v); duck(t); },
+  snare: (t, v) => { D.snareN.triggerAttackRelease(0.06, t, v); D.snareB.triggerAttackRelease(180, 0.08, t, v); },
+  clap:  (t, v) => { D.clapA.triggerAttackRelease(0.02, t, v * 0.8); D.clapB.triggerAttackRelease(0.02, t + 0.012, v * 0.9); D.clapC.triggerAttackRelease(0.06, t + 0.024, v); },
+  chh:   (t, v) => D.chh.triggerAttackRelease(0.03, t, v),
+  ohh:   (t, v) => D.ohh.triggerAttackRelease(0.15, t, v),
+  shk:   (t, v) => D.shk.triggerAttackRelease(0.03, t, v),
+  ride:  (t, v) => D.ride.triggerAttackRelease(0.2, t, v),
+  perc:  (t, v) => D.perc.triggerAttackRelease(rootHz(4), 0.05, t, v),
+  dagga: (t, v) => { D.dagga.triggerAttackRelease(rootHz(2), 0.3, t, v); duck(t); },
+  tilli: (t, v) => D.tilli.triggerAttackRelease(mtof(12 * 5 + state.key + 7), 0.05, t, v),
+  slap:  (t, v) => D.slap.triggerAttackRelease(0.02, t, v)
+};
+function buildTheremin() {
+  A.thF = new Tone.Filter({ type: "lowpass", frequency: 3000, Q: 0.7 }).connect(A.instBus);
+  A.thG = new Tone.Gain(0).connect(A.thF);
+  A.thVib = new Tone.Vibrato({ frequency: 5.5, depth: 0.05 }).connect(A.thG);
+  A.thOsc = new Tone.Oscillator({ type: "custom", partials: [1, 0.32, 0.12], frequency: 440, volume: -4 }).connect(A.thVib);
+  A.thOsc.start();
+}
+function buildRiser() {
+  A.rf = new Tone.Filter({ type: "bandpass", frequency: 400, Q: 1.5 });
+  A.rg = new Tone.Gain(0); A.rf.connect(A.rg); A.rg.connect(A.mix); A.rg.connect(A.revSend);
+  A.rNoise = new Tone.Noise("white").connect(A.rf);
+  A.rOsc = new Tone.Oscillator({ type: "sawtooth", frequency: 110, volume: -12 }).connect(A.rf);
+  A.rNoise.start(); A.rOsc.start();
+}
+function buildImpact() {
+  A.impK = new Tone.MembraneSynth({ volume: -2, pitchDecay: 0.3, octaves: 7, envelope: { attack: 0.001, decay: 1.4, sustain: 0, release: 0.5 } });
+  A.impK.connect(A.mix); A.impK.connect(A.revSend);
+  const hp = new Tone.Filter({ type: "highpass", frequency: 3000 }); hp.connect(A.mix); hp.connect(A.revSend);
+  A.impC = new Tone.NoiseSynth({ volume: -15, noise: { type: "white" }, envelope: { attack: 0.001, decay: 1.8, sustain: 0, release: 0.5 } }).connect(hp);
+}
+function doImpact(t) {
+  try { A.impK.triggerAttackRelease(rootHz(1), 1, t, 1); A.impC.triggerAttackRelease(1.2, t, 0.9); } catch (e) {}
+  Tone.Draw.schedule(() => flash("IMPACT", "var(--acc)"), t);
+}
+function flash(txt, color) { ui.flash = performance.now(); ui.flashTxt = txt; ui.flashColor = color; }
+
+/* throttled param setter */
+const pCache = new Map();
+function setP(param, v, rt = 0.05, key) {
+  const k = key || param; const last = pCache.get(k);
+  if (last !== undefined && Math.abs(v - last) <= Math.max(Math.abs(last) * 0.008, 1e-4)) return;
+  pCache.set(k, v);
+  try { param.rampTo(v, rt); } catch (e) {}
+}
+function forgetP(key) { pCache.delete(key); }
+
+/* ================= transport / timing ================= */
+const ppq16 = () => Tone.Transport.PPQ / 4;
+const stepAt = t => Math.round(Tone.Transport.getTicksAtTime(t) / ppq16());
+const lastT = {};
+function qt(key) {
+  const now = Tone.now();
+  let t = (Tone.Transport.state === "started" && state.quant) ? Tone.Transport.nextSubdivision("16n") : now + 0.005;
+  if (!(t > now)) t = now + 0.005;
+  if (lastT[key] !== undefined && t <= lastT[key]) t = lastT[key] + 0.004;
+  lastT[key] = t; return t;
+}
+function applyKit() {
+  Tone.Transport.swing = KITS[state.kit].swing;
+  Tone.Transport.swingSubdivision = "16n";
+}
+function tick(time) {
+  const abs = stepAt(time), step = mod(abs, 16), bar = Math.floor(abs / 16);
+  if (step % 4 === 0) {
+    if (state.pendingLayers !== null) { state.fingerLayers = state.pendingLayers; state.pendingLayers = null; }
+    if (state.dropPending) { state.dropPending = false; doDrop(time); }
+  }
+  if (step === 0) {
+    if (state.undropPending) { state.undropPending = false; doUndrop(time); }
+    if (state.riser.stopPending) { state.riser.stopPending = false; riserRelease(time); doImpact(time); }
+    if (state.impactPending) { state.impactPending = false; doImpact(time); }
+    if (state.buildPending) { state.buildPending = false; startBuild(bar, time); }
+    else if (state.build && bar >= state.build.startBar + 4) endBuild(time);
+  }
+  const L = Math.min(state.fingerLayers, state.cap);
+  if (!state.dropped && L > 0) {
+    const pat = getPattern(state.kit, L);
+    for (const v in pat) { const vel = pat[v][step]; if (vel > 0) { try { V[v](time, vel); } catch (e) {} } }
+  }
+  if (state.build) {
+    const bi = bar - state.build.startBar, dens = [4, 2, 1, 1][bi] || 1;
+    if (bi >= 0 && bi < 4 && step % dens === 0) { try { D.roll.triggerAttackRelease(0.05, time, 0.25 + 0.75 * (bi * 16 + step) / 64); } catch (e) {} }
+  }
+  arpTick(time, abs);
+  loopTick(time, abs);
+  Tone.Draw.schedule(() => { ui.step = step; ui.bar = bar; }, time);
+}
+function doDrop(t) {
+  state.dropped = true;
+  A.drumMute.gain.rampTo(0, 0.02, t);
+  if (!state.fxActive) A.djLP.frequency.rampTo(450, 0.3, t);
+  A.revSend.gain.rampTo(0.45, 0.3, t); forgetP(A.revSend.gain);
+  Tone.Draw.schedule(() => flash("DROP", "var(--warn)"), t);
+}
+function doUndrop(t) {
+  state.dropped = false;
+  A.drumMute.gain.rampTo(1, 0.005, t);
+  if (!state.fxActive) A.djLP.frequency.rampTo(20000, 0.02, t);
+  A.revSend.gain.rampTo(0.15, 0.2, t); forgetP(A.revSend.gain);
+  doImpact(t);
+}
+function startBuild(bar, t) {
+  state.build = { startBar: bar };
+  const dur = Tone.Time("1m").toSeconds() * 4;
+  const g = A.rg.gain, f = A.rf.frequency, o = A.rOsc.frequency, hp = A.djHP.frequency;
+  [g, f, o, hp].forEach(p => p.cancelScheduledValues(t));
+  g.setValueAtTime(0.02, t); g.linearRampToValueAtTime(0.4, t + dur);
+  f.setValueAtTime(300, t); f.exponentialRampToValueAtTime(8000, t + dur);
+  o.setValueAtTime(110, t); o.exponentialRampToValueAtTime(880, t + dur);
+  hp.setValueAtTime(20, t); hp.exponentialRampToValueAtTime(700, t + dur);
+  forgetP(A.djHP.frequency);
+}
+function endBuild(t) {
+  state.build = null;
+  riserRelease(t);
+  A.djHP.frequency.cancelScheduledValues(t); A.djHP.frequency.setValueAtTime(20, t);
+  doImpact(t);
+  state.cap = 5; state.fingerLayers = 5; state.pendingLayers = null;
+  Tone.Draw.schedule(() => { state.scene = "Drop"; refreshUI(); }, t);
+}
+
+/* ================= riser ================= */
+function riserUpdate(a) {
+  setP(A.rg.gain, a * 0.4, 0.05, "rg");
+  setP(A.rf.frequency, 300 * Math.pow(2, a * 5), 0.05, "rf");
+  setP(A.rOsc.frequency, 110 * Math.pow(2, a * 3), 0.05, "ro");
+}
+function riserRelease(t) {
+  t = t || Tone.now();
+  try { A.rg.gain.cancelScheduledValues(t); A.rg.gain.rampTo(0, 0.08, t); } catch (e) {}
+  forgetP("rg"); forgetP("rf"); forgetP("ro");
+}
+
+/* ================= arp ================= */
+const arp = { notes: null, i: 0, oct: 1 };
+function arpTick(time) {
+  if (!arp.notes || !arp.notes.length) return;
+  const up = []; for (let o = 0; o < arp.oct; o++) for (const n of arp.notes) up.push(n + 12 * o);
+  const seq = up.length > 2 ? up.concat(up.slice(1, -1).reverse()) : up;
+  const m = seq[arp.i % seq.length]; arp.i++;
+  try { A.voices.arp.s.triggerAttackRelease(mname(m), "16n", time, arp.i % 4 === 1 ? 0.95 : 0.65); } catch (e) {}
+  capShot("arp", [m], time, 1);
+}
+
+/* ================= looper (note events, 4 bars) ================= */
+const loop = { state: "idle", len: 64, start: 0, recEnd: 0, events: [], pend: {} };
+const isRecLoop = () => loop.state === "rec" || loop.state === "od";
+function loopToggle() {
+  const s = loop.state;
+  if (s === "idle") { loop.events = []; loop.pend = {}; loop.state = "armed"; toast("LOOP ARMED · next bar", "#facc15"); }
+  else if (s === "armed") loop.state = "idle";
+  else if (s === "play") { loop.state = "odarm"; toast("OVERDUB ARMED", "#facc15"); }
+  else if (s === "odarm") loop.state = "play";
+  refreshUI();
+}
+function loopClear() {
+  loop.state = "idle"; loop.events = []; loop.pend = {};
+  for (const k in A.loopVoices) { try { const v = A.loopVoices[k]; v.mono ? v.s.triggerRelease() : v.s.releaseAll(); } catch (e) {} }
+  toast("LOOP CLEARED"); refreshUI();
+}
+function loopTick(time, abs) {
+  if (loop.state === "armed" && mod(abs, 16) === 0) { loop.state = "rec"; loop.start = abs; loop.recEnd = abs + loop.len; Tone.Draw.schedule(refreshUI, time); }
+  if (loop.state === "odarm" && mod(abs - loop.start, loop.len) === 0) { loop.state = "od"; loop.recEnd = abs + loop.len; Tone.Draw.schedule(refreshUI, time); }
+  if (isRecLoop() && abs >= loop.recEnd) {
+    for (const k in loop.pend) closeCap(k, abs);
+    loop.state = "play"; Tone.Draw.schedule(refreshUI, time);
+  }
+  if (loop.state === "play" || loop.state === "od" || loop.state === "odarm") {
+    const rel = mod(abs - loop.start, loop.len);
+    for (const ev of loop.events) if (ev.step === rel) playEv(ev, time);
+  }
+}
+function playEv(ev, time) {
+  const v = A.loopVoices[ev.inst]; if (!v) return;
+  const d = ev.dur * Tone.Time("16n").toSeconds() * 0.97;
+  try { v.s.triggerAttackRelease(v.mono ? mname(ev.notes[0]) : ev.notes.map(mname), d, time, 0.8); } catch (e) {}
+}
+function capOn(inst, notes, t) {
+  if (!isRecLoop()) return;
+  if (loop.pend[inst]) capOff(inst, t);
+  const a = stepAt(t); loop.pend[inst] = { notes, abs: a, step: mod(a - loop.start, loop.len) };
+}
+function closeCap(inst, absEnd) {
+  const p = loop.pend[inst]; if (!p) return; delete loop.pend[inst];
+  if (loop.events.length < 600) loop.events.push({ inst, notes: p.notes, step: p.step, dur: clamp(absEnd - p.abs, 1, loop.len) });
+}
+function capOff(inst, t) { if (loop.pend[inst]) closeCap(inst, stepAt(t)); }
+function capShot(inst, notes, t, dur) {
+  if (!isRecLoop() || loop.events.length >= 600) return;
+  loop.events.push({ inst, notes, step: mod(stepAt(t) - loop.start, loop.len), dur });
+}
+
+/* ================= hand tracking ================= */
+class OneEuro {
+  constructor(minCut = 1.6, beta = 3.0, dCut = 1.0) { this.minCut = minCut; this.beta = beta; this.dCut = dCut; this.reset(); }
+  reset() { this.x = null; this.dx = 0; this.t = null; }
+  a(cut, dt) { const tau = 1 / (2 * Math.PI * cut); return 1 / (1 + tau / dt); }
+  filter(v, t) {
+    if (this.t === null) { this.t = t; this.x = v; return v; }
+    const dt = Math.max((t - this.t) / 1000, 1e-3); this.t = t;
+    const dv = (v - this.x) / dt;
+    this.dx = this.dx + this.a(this.dCut, dt) * (dv - this.dx);
+    const cut = this.minCut + this.beta * Math.abs(this.dx);
+    this.x = this.x + this.a(cut, dt) * (v - this.x);
+    return this.x;
+  }
+}
+function makeHand(id) {
+  return { id, present: false, lastSeen: -1e9, lm: null, raw0: { x: .5, y: .5 },
+    f: Array.from({ length: 21 }, () => [new OneEuro(), new OneEuro()]),
+    size: .1, pinchRaw: 1, pinch: false, open: 0, fingers: -1, fCand: -1, fSince: 0, pp: { x: .5, y: .5 }, trail: [] };
+}
+const hands = { L: makeHand("L"), R: makeHand("R") };
+const TIPS = [[8, 6], [12, 10], [16, 14], [20, 18]];
+
+function processHands(res, now) {
+  const det = (res.landmarks || []).map(l => l.map(p => ({ x: 1 - p.x, y: p.y })));
+  const assign = {};
+  if (det.length >= 2) {
+    const a = det[0], b = det[1], HL = hands.L, HR = hands.R;
+    const recent = h => h.present || now - h.lastSeen < 500;
+    if (recent(HL) && recent(HR)) {   // hand lock: keep identities by nearest previous position
+      const c1 = dist(a[0], HL.raw0) + dist(b[0], HR.raw0), c2 = dist(b[0], HL.raw0) + dist(a[0], HR.raw0);
+      if (c1 <= c2) { assign.L = a; assign.R = b; } else { assign.L = b; assign.R = a; }
+    } else if (a[0].x <= b[0].x) { assign.L = a; assign.R = b; } else { assign.L = b; assign.R = a; }
+  } else if (det.length === 1) {
+    const d = det[0], w = d[0]; let best = null, bd = 1e9;
+    for (const id of ["L", "R"]) { const h = hands[id]; if (h.present || now - h.lastSeen < 500) { const dd = dist(h.raw0, w); if (dd < bd) { bd = dd; best = id; } } }
+    if (!best || bd > 0.22) best = w.x < 0.5 ? "L" : "R";
+    assign[best] = d;
+  }
+  for (const id of ["L", "R"]) if (assign[id]) updateHand(hands[id], assign[id], now);
+}
+function updateHand(h, lm, now) {
+  if (!h.present && now - h.lastSeen > 400) { h.f.forEach(p => { p[0].reset(); p[1].reset(); }); h.fingers = -1; h.fCand = -1; h.pinch = false; }
+  h.raw0 = { x: lm[0].x, y: lm[0].y };
+  const s = lm.map((p, i) => ({ x: h.f[i][0].filter(p.x, now), y: h.f[i][1].filter(p.y, now) }));
+  h.lm = s;
+  const W = s[0];
+  h.size = Math.max(dist(W, s[9]), 0.02);
+  h.pinchRaw = dist(s[4], s[8]) / h.size;
+  const idxUp = dist(s[8], W) > dist(s[5], W) * 1.15;                 // index not curled into a fist
+  h.pinchOk = idxUp;
+  h.pinch = idxUp && (h.pinch ? h.pinchRaw < 0.5 : h.pinchRaw < 0.3);  // hysteresis
+  h.pp = { x: (s[4].x + s[8].x) / 2, y: (s[4].y + s[8].y) / 2 };
+  let four = 0; for (const [tip, pip] of TIPS) if (dist(s[tip], W) > dist(s[pip], W) * 1.12) four++;
+  const thumb = dist(s[4], s[17]) > dist(s[3], s[17]) * 1.08 && dist(s[4], s[5]) / h.size > 0.45;
+  const raw = four === 0 ? 0 : Math.min(5, four + (thumb ? 1 : 0));
+  let spread = 0; for (const t of [12, 16, 20]) spread += dist(s[t], W) / h.size;
+  h.open = clamp((spread / 3 - 1.0) / 0.9);
+  const need = raw === 0 ? 220 : 130;                                  // hold time
+  if (raw !== h.fCand) { h.fCand = raw; h.fSince = now; }
+  else if (now - h.fSince > need && h.fingers !== raw) { h.fingers = raw; onFingers(h, raw); }
+  if (h.pinch) { h.trail.push({ x: h.pp.x, y: h.pp.y, t: now }); }
+  h.trail = h.trail.filter(p => now - p.t < 450);
+  h.present = true; h.lastSeen = now;
+}
+function updateLost(now) {
+  for (const id of ["L", "R"]) {
+    const h = hands[id];
+    if (h.present && now - h.lastSeen > 220) { h.present = false; h.trail = []; if (id === "R") releaseRight(); }
+  }
+}
+function norm(id, p) {
+  const c = cal[id];
+  return { x: clamp((p.x - c.x0) / (c.x1 - c.x0)), y: 1 - clamp((p.y - c.y0) / (c.y1 - c.y0)) };
+}
+
+/* ================= gesture → music ================= */
+function onFingers(h, n) {
+  if (h.id !== "L" || !state.started) return;
+  if (h.pinch || state.riser.on || state.riser.cand) return;
+  if (n > 0 && h.pinchOk && h.pinchRaw < 0.6) return;                 // fingers moving into a pinch
+  if (n === 0) {
+    state.undropPending = false;
+    if (!state.dropped && !state.dropPending) state.dropPending = true;
+  } else {
+    state.dropPending = false;
+    if (state.dropped) state.undropPending = true;
+    if (Tone.Transport.state === "started") state.pendingLayers = n; else state.fingerLayers = n;
+  }
+}
+const R = { on: false, held: null, zone: null, chord: null, suppress: false };
+function zoneOf(x, n, prev) {
+  const raw = x * n; let z = clamp(Math.floor(raw), 0, n - 1);
+  if (prev !== null && prev < n && Math.abs(raw - (prev + 0.5)) < 0.72) z = prev;  // hysteresis
+  return z;
+}
+const zonesFor = mode => mode === "lead" ? SC().length * 2 + 1 : mode === "bass" ? SC().length * 2 : SC().length;
+function monoOn(inst, m) { const t = qt(inst); try { A.voices[inst].s.triggerAttack(mname(m), t, 0.9); } catch (e) {} capOn(inst, [m], t); }
+function monoChange(inst, m) { const t = qt(inst); try { A.voices[inst].s.setNote(mname(m), t); } catch (e) {} capOff(inst, t); capOn(inst, [m], t); }
+function monoOff(inst) { const t = qt(inst); try { A.voices[inst].s.triggerRelease(t); } catch (e) {} capOff(inst, t); }
+function chordOn(z) {
+  const notes = chordNotes(z, 3, state.chordSound === "Pad" || state.chordSound === "Keys");
+  const t = qt("chords"); try { A.voices.chords.s.triggerAttack(notes.map(mname), t, 0.75); } catch (e) {}
+  R.chord = notes; capOn("chords", notes, t);
+}
+function chordOff() {
+  if (!R.chord) return; const t = qt("chords");
+  try { A.voices.chords.s.triggerRelease(R.chord.map(mname), t); } catch (e) {}
+  capOff("chords", t); R.chord = null;
+}
+function releaseRight() {
+  if (!A.voices) return;
+  if (R.on) {
+    if (state.mode === "lead" || state.mode === "bass") monoOff(state.mode);
+    if (state.mode === "chords") chordOff();
+  }
+  if (R.chord) chordOff();
+  arp.notes = null; arp.i = 0;
+  try { A.thG.gain.rampTo(0, 0.12); } catch (e) {} forgetP("thG");
+  fxRelease();
+  R.on = false; R.held = null;
+}
+function fxApply(n) {
+  state.fxActive = true;
+  if (n.y < 0.5) { setP(A.djLP.frequency, 180 * Math.pow(2, (n.y / 0.5) * 6.8), 0.05, "djLP"); setP(A.djHP.frequency, 20, 0.05, "djHP"); }
+  else { setP(A.djHP.frequency, 20 * Math.pow(2, ((n.y - 0.5) / 0.5) * 8.2), 0.05, "djHP"); setP(A.djLP.frequency, 20000, 0.05, "djLP"); }
+  setP(A.delay.feedback, 0.2 + n.x * 0.62, 0.05, "fb");
+  setP(A.dlySend.gain, n.x * 0.7, 0.05, "dly");
+}
+function fxRelease() {
+  if (!state.fxActive) return; state.fxActive = false;
+  try {
+    A.djLP.frequency.rampTo(state.dropped ? 450 : 20000, 0.25);
+    if (!state.build) A.djHP.frequency.rampTo(20, 0.25);
+    A.delay.feedback.rampTo(0.35, 0.4); A.dlySend.gain.rampTo(0.08, 0.6);
+  } catch (e) {}
+  ["djLP", "djHP", "fb", "dly"].forEach(forgetP); forgetP(A.dlySend.gain);
+}
+function control(now) {
+  if (!state.started) return;
+  const HL = hands.L, HR = hands.R, rs = state.riser;
+  // both-hands riser
+  const both = HL.present && HR.present && HL.pinch && HR.pinch && !state.build;
+  if (both) {
+    if (!rs.cand) rs.cand = now;
+    if (!rs.on && now - rs.cand > 400) { rs.on = true; rs.since = now; releaseRight(); R.suppress = true; flash("RISER", "var(--acc)"); }
+  } else {
+    rs.cand = 0;
+    if (rs.on) { rs.on = false; if (now - rs.since > 700) rs.stopPending = true; else riserRelease(); }
+  }
+  if (rs.on) { rs.amt = clamp(dist(HL.pp, HR.pp) / 0.75); riserUpdate(rs.amt); }
+
+  // left hand: pinch = drum filter
+  if (HL.present && HL.pinch && !rs.on) {
+    const n = norm("L", HL.pp); const f = n.y > 0.96 ? 20000 : 120 * Math.pow(2, n.y * 7.4);
+    setP(A.drumFilter.frequency, f, 0.06, "drumF"); ui.drumF = f;
+  }
+
+  // right hand
+  if (!HR.present || rs.on) return;
+  if (R.suppress) { if (!HR.pinch) R.suppress = false; else return; }
+  const n = norm("R", HR.pp), mode = state.mode;
+  if (mode !== "fx" && !state.dropped) {
+    setP(A.revSend.gain, 0.08 + HR.open * 0.4, 0.15);
+    setP(A.dlySend.gain, 0.04 + HR.open * 0.26, 0.15);
+  }
+  const nz = zonesFor(mode); const z = zoneOf(n.x, nz, R.zone); R.zone = z;
+  if (mode === "lead" || mode === "bass") {
+    const v = A.voices[mode];
+    if (mode === "lead") setP(v.f.frequency, 220 * Math.pow(2, n.y * 5.4), 0.05, "leadF");
+    else { setP(v.f.frequency, 90 * Math.pow(2, n.y * 6.5), 0.05, "bassF"); setP(v.dist.wet, 0.15 + HR.open * 0.7, 0.1, "bassD"); }
+    const m = scaleMidi(z, mode === "lead" ? 4 : 2);
+    if (HR.pinch) {
+      if (!R.on) { R.on = true; R.held = z; monoOn(mode, m); }
+      else if (z !== R.held) { R.held = z; monoChange(mode, m); }
+    } else if (R.on) { R.on = false; R.held = null; monoOff(mode); }
+  } else if (mode === "arp") {
+    setP(A.voices.arp.f.frequency, 300 * Math.pow(2, n.y * 5.5), 0.05, "arpF");
+    if (HR.pinch) {
+      arp.oct = 1 + Math.round(HR.open * 2);
+      if (!R.on || z !== R.held) { R.on = true; R.held = z; arp.notes = chordNotes(z, 4, false); }
+    } else if (R.on) { R.on = false; R.held = null; arp.notes = null; arp.i = 0; }
+  } else if (mode === "chords") {
+    setP(A.voices.chords.f.frequency, 250 * Math.pow(2, n.y * 6.2), 0.05, "chF");
+    if (HR.pinch) {
+      if (!R.on) { R.on = true; R.held = z; chordOn(z); }
+      else if (z !== R.held) { R.held = z; chordOff(); chordOn(z); }
+    } else if (R.on) { R.on = false; R.held = null; chordOff(); }
+  } else if (mode === "theremin") {
+    if (HR.pinch) {
+      R.on = true;
+      const raw = 60 + state.key + n.x * 24, m = lerp(raw, nearestScaleMidi(raw), 0.8);
+      R.thMidi = m;
+      setP(A.thOsc.frequency, mtof(m), 0.04, "thF");
+      setP(A.thG.gain, 0.08 + 0.5 * n.y, 0.05, "thG");
+      setP(A.thVib.depth, 0.03 + HR.open * 0.25, 0.1, "thV");
+      setP(A.thF.frequency, 900 + n.y * 4200, 0.05, "thLP");
+    } else if (R.on) { R.on = false; try { A.thG.gain.rampTo(0, 0.15); } catch (e) {} forgetP("thG"); }
+  } else if (mode === "fx") {
+    if (HR.pinch) { R.on = true; fxApply(n); } else if (R.on) { R.on = false; fxRelease(); }
+  }
+}
+
+/* ================= scenes ================= */
+function setScene(name) {
+  state.scene = name;
+  const t = Tone.Transport.state === "started" ? Tone.Transport.nextSubdivision("4n") : Tone.now();
+  const neutral = () => { setP(A.drumFilter.frequency, 20000, 0.3, "drumF"); ui.drumF = 20000; };
+  if (state.build && name !== "Build") { state.build = null; riserRelease(t); A.djHP.frequency.cancelScheduledValues(t); A.djHP.frequency.rampTo(20, 0.1, t); }
+  state.buildPending = false;
+  if (name === "Intro")  { state.cap = 2; state.fingerLayers = Math.max(1, state.fingerLayers); setP(A.drumFilter.frequency, 1400, 0.4, "drumF"); ui.drumF = 1400; }
+  if (name === "Groove") { state.cap = 5; state.fingerLayers = Math.max(3, state.fingerLayers); neutral(); }
+  if (name === "Build")  { state.cap = 5; state.fingerLayers = Math.max(3, state.fingerLayers); neutral(); state.buildPending = true; }
+  if (name === "Drop")   { state.cap = 5; state.fingerLayers = 5; state.pendingLayers = null; neutral(); if (state.dropped) state.undropPending = true; else state.impactPending = true; }
+  if (name === "Break")  { state.cap = 0; }
+  if (name !== "Build" && name !== "Drop") { state.dropped && (state.undropPending = true); }
+  flash(name.toUpperCase(), "var(--L)"); refreshUI();
+}
+
+/* ================= camera + model ================= */
+const video = $("#cam");
+let landmarker = null, vision = null, lastVideoTime = -1;
+async function createLandmarker(delegate) {
+  if (!vision) vision = await FilesetResolver.forVisionTasks(WASM);
+  return HandLandmarker.createFromOptions(vision, {
+    baseOptions: { modelAssetPath: MODEL, delegate },
+    runningMode: "VIDEO", numHands: 2,
+    minHandDetectionConfidence: 0.55, minHandPresenceConfidence: 0.55, minTrackingConfidence: 0.5
+  });
+}
+
+/* ================= calibration ================= */
+let calib = null;
+function startCal() { calib = { until: performance.now() + 6000, s: { L: [], R: [] } }; toast("CALIBRATING · sweep both hands", "var(--L)"); }
+function calStep(now) {
+  if (!calib) return;
+  for (const id of ["L", "R"]) if (hands[id].present) calib.s[id].push(hands[id].pp);
+  if (now < calib.until) return;
+  const pct = (arr, p) => arr[Math.min(arr.length - 1, Math.max(0, Math.floor(p * arr.length)))];
+  let ok = 0;
+  for (const id of ["L", "R"]) {
+    const pts = calib.s[id]; if (pts.length < 40) continue;
+    const xs = pts.map(p => p.x).sort((a, b) => a - b), ys = pts.map(p => p.y).sort((a, b) => a - b);
+    const c = { x0: pct(xs, .04) - .02, x1: pct(xs, .96) + .02, y0: pct(ys, .04) - .02, y1: pct(ys, .96) + .02 };
+    if (c.x1 - c.x0 > 0.15 && c.y1 - c.y0 > 0.15) { cal[id] = c; ok++; }
+  }
+  calib = null; store.set("cal", cal);
+  toast(ok ? `CALIBRATED (${ok} hand${ok > 1 ? "s" : ""})` : "Not enough movement — try again", ok ? "var(--acc)" : "var(--warn)");
+}
+
+/* ================= drawing ================= */
+const cv = $("#stage"), ctx = cv.getContext("2d");
+let DPR = 1;
+function resize() { DPR = Math.min(window.devicePixelRatio || 1, IS_MOBILE ? 1.5 : 2); cv.width = innerWidth * DPR; cv.height = innerHeight * DPR; }
+addEventListener("resize", resize); resize();
+const CONN = [[0,1],[1,2],[2,3],[3,4],[0,5],[5,6],[6,7],[7,8],[5,9],[9,10],[10,11],[11,12],[9,13],[13,14],[14,15],[15,16],[13,17],[17,18],[18,19],[19,20],[0,17]];
+const COL = { L: "#22d3ee", R: "#f472b6", acc: "#a3e635", warn: "#fb7185", mut: "#8a8aa3" };
+const font = (w, px, fam = "JetBrains Mono") => `${w} ${px * DPR}px "${fam}", monospace`;
+function rr(x, y, w, h, r) { ctx.beginPath(); ctx.roundRect ? ctx.roundRect(x, y, w, h, r) : ctx.rect(x, y, w, h); }
+
+function draw(now) {
+  const W = cv.width, H = cv.height;
+  ctx.fillStyle = "#05050a"; ctx.fillRect(0, 0, W, H);
+  // video, cover-fit, mirrored
+  let dx = 0, dy = 0, dw = W, dh = H;
+  if (video.readyState >= 2 && video.videoWidth) {
+    const vr = video.videoWidth / video.videoHeight, cr = W / H;
+    if (vr > cr) { dh = H; dw = H * vr; dx = (W - dw) / 2; } else { dw = W; dh = W / vr; dy = (H - dh) / 2; }
+    ctx.save(); ctx.globalAlpha = 0.42; ctx.translate(W, 0); ctx.scale(-1, 1); ctx.drawImage(video, dx, dy, dw, dh); ctx.restore();
+  }
+  const g = ctx.createRadialGradient(W / 2, H / 2, H * 0.2, W / 2, H / 2, H * 0.95);
+  g.addColorStop(0, "rgba(5,5,10,0)"); g.addColorStop(1, "rgba(5,5,10,.85)"); ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+  const S = p => ({ x: dx + p.x * dw, y: dy + p.y * dh });
+
+  if (state.started) { drawZones(S, now); drawLeftZone(S); }
+  for (const id of ["L", "R"]) if (hands[id].present) drawHand(hands[id], S, now);
+  if (state.riser.on) {
+    const a = S(hands.L.pp), b = S(hands.R.pp);
+    ctx.save(); ctx.strokeStyle = COL.acc; ctx.lineWidth = (2 + state.riser.amt * 10) * DPR; ctx.shadowColor = COL.acc; ctx.shadowBlur = GLOW * 30 * DPR;
+    ctx.setLineDash([12 * DPR, 8 * DPR]); ctx.lineDashOffset = -now / 20; ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke(); ctx.restore();
+    ctx.fillStyle = COL.acc; ctx.font = font(700, 16); ctx.textAlign = "center"; ctx.fillText(`RISER ${Math.round(state.riser.amt * 100)}%`, (a.x + b.x) / 2, (a.y + b.y) / 2 - 18 * DPR);
+  }
+  if (state.started) drawHUD(now);
+  if (calib) {
+    const left = Math.max(0, (calib.until - now) / 1000);
+    ctx.fillStyle = "rgba(34,211,238,.9)"; ctx.font = font(700, 22, "Space Grotesk"); ctx.textAlign = "center";
+    ctx.fillText(`CALIBRATING ${left.toFixed(1)}s — sweep both hands across your full reach`, W / 2, H * 0.22);
+  }
+  const fa = 1 - (now - ui.flash) / 700;
+  if (fa > 0 && ui.flashTxt) {
+    ctx.save(); ctx.globalAlpha = fa; ctx.fillStyle = ui.flashColor && ui.flashColor.startsWith("var") ? ({ "var(--acc)": COL.acc, "var(--warn)": COL.warn, "var(--L)": COL.L })[ui.flashColor] : "#fff";
+    ctx.font = font(700, 72 + (1 - fa) * 20, "Space Grotesk"); ctx.textAlign = "center"; ctx.shadowColor = ctx.fillStyle; ctx.shadowBlur = GLOW * 40 * DPR;
+    ctx.fillText(ui.flashTxt, W / 2, H / 2); ctx.restore();
+  }
+  if (state.started && !hands.L.present && !hands.R.present) {
+    ctx.fillStyle = "rgba(236,236,244,.75)"; ctx.font = font(600, 18, "Space Grotesk"); ctx.textAlign = "center";
+    ctx.fillText("Show both hands to the camera  ·  press H for help", W / 2, H * 0.5);
+  }
+}
+function drawZones(S, now) {
+  const c = cal.R, a = S({ x: c.x0, y: c.y0 }), b = S({ x: c.x1, y: c.y1 });
+  const [y0, y1] = visY(a.y, b.y);
+  const x0 = a.x, x1 = b.x, mode = state.mode, HR = hands.R;
+  ctx.save();
+  if (mode === "fx") {
+    ctx.strokeStyle = "rgba(244,114,182,.35)"; ctx.lineWidth = DPR; rr(x0, y0, x1 - x0, y1 - y0, 14 * DPR); ctx.stroke();
+    ctx.setLineDash([4 * DPR, 6 * DPR]); ctx.beginPath(); ctx.moveTo(x0, (y0 + y1) / 2); ctx.lineTo(x1, (y0 + y1) / 2); ctx.stroke(); ctx.setLineDash([]);
+    ctx.fillStyle = "rgba(236,236,244,.6)"; ctx.font = font(600, 11); ctx.textAlign = "left";
+    ctx.fillText("HIGH-PASS ↑", x0 + 10 * DPR, y0 + 18 * DPR); ctx.fillText("LOW-PASS ↓", x0 + 10 * DPR, y1 - 10 * DPR);
+    ctx.textAlign = "right"; ctx.fillText("DELAY THROW →", x1 - 10 * DPR, (y0 + y1) / 2 - 8 * DPR);
+    if (HR.present) { const p = S(HR.pp); ctx.strokeStyle = HR.pinch ? COL.R : "rgba(244,114,182,.4)"; ctx.beginPath(); ctx.moveTo(p.x, y0); ctx.lineTo(p.x, y1); ctx.moveTo(x0, p.y); ctx.lineTo(x1, p.y); ctx.stroke(); }
+    ctx.restore(); return;
+  }
+  const n = zonesFor(mode), zw = (x1 - x0) / n;
+  for (let i = 0; i < n; i++) {
+    const zx = x0 + i * zw, active = HR.present && R.zone === i, held = R.on && R.held === i && mode !== "theremin";
+    if (active || held) {
+      const gr = ctx.createLinearGradient(0, y0, 0, y1);
+      gr.addColorStop(0, `rgba(244,114,182,${held ? .32 : .1})`); gr.addColorStop(1, "rgba(244,114,182,0)");
+      ctx.fillStyle = gr; ctx.fillRect(zx, y0, zw, y1 - y0);
+    }
+    ctx.strokeStyle = "rgba(255,255,255,.07)"; ctx.lineWidth = DPR; ctx.beginPath(); ctx.moveTo(zx, y0); ctx.lineTo(zx, y1); ctx.stroke();
+    if (mode !== "theremin") {
+      let label;
+      if (mode === "lead") label = noteName(scaleMidi(i, 4));
+      else if (mode === "bass") label = noteName(scaleMidi(i, 2));
+      else label = chordName(i);
+      ctx.fillStyle = held ? COL.R : active ? "rgba(244,114,182,.9)" : "rgba(236,236,244,.4)";
+      ctx.font = font(held ? 700 : 600, n > 12 ? 9 : 11); ctx.textAlign = "center";
+      ctx.fillText(label, zx + zw / 2, y1 + 16 * DPR);
+    }
+  }
+  ctx.strokeStyle = "rgba(255,255,255,.07)"; ctx.beginPath(); ctx.moveTo(x1, y0); ctx.lineTo(x1, y1); ctx.stroke();
+  ctx.fillStyle = "rgba(236,236,244,.35)"; ctx.font = font(600, 10); ctx.textAlign = "right";
+  ctx.fillText(mode === "theremin" ? "VOLUME ↑" : "BRIGHT ↑", x1 - 6 * DPR, y0 + 14 * DPR);
+  ctx.restore();
+}
+function visY(ya, yb) {   // keep overlays clear of the toolbar and the bottom HUD
+  const top = (($("#bar").offsetHeight || 0) + 8) * DPR, bot = cv.height - 92 * DPR;
+  const y0 = Math.max(ya, top), y1 = Math.min(yb, bot);
+  return y1 - y0 > 60 * DPR ? [y0, y1] : [ya, yb];
+}
+function drawLeftZone(S) {
+  const c = cal.L, a0 = S({ x: c.x0, y: c.y0 }), b0 = S({ x: c.x1, y: c.y1 });
+  const [ya, yb] = visY(a0.y, b0.y), a = { x: a0.x, y: ya }, b = { x: b0.x, y: yb };
+  ctx.save();
+  ctx.strokeStyle = "rgba(34,211,238,.18)"; ctx.lineWidth = DPR; ctx.setLineDash([3 * DPR, 7 * DPR]); rr(a.x, a.y, b.x - a.x, b.y - a.y, 16 * DPR); ctx.stroke(); ctx.setLineDash([]);
+  const L = Math.min(state.fingerLayers, state.cap);
+  ctx.textAlign = "left"; ctx.font = font(700, 11); ctx.fillStyle = "rgba(34,211,238,.75)";
+  ctx.fillText(`BEATS · ${state.kit.toUpperCase()}`, a.x + 12 * DPR, a.y + 20 * DPR);
+  ctx.font = font(700, 40, "Space Grotesk");
+  ctx.fillStyle = state.dropped ? COL.warn : COL.L;
+  ctx.fillText(state.dropped ? "DROP" : (L ? `${L}` : "–"), a.x + 12 * DPR, a.y + 62 * DPR);
+  if (ui.drumF < 19000) { ctx.font = font(600, 11); ctx.fillStyle = "rgba(34,211,238,.7)"; ctx.fillText(`DRUM FILTER ${Math.round(ui.drumF)} Hz`, a.x + 12 * DPR, a.y + 82 * DPR); }
+  ctx.restore();
+}
+function drawHand(h, S, now) {
+  const col = COL[h.id], P = h.lm.map(S);
+  ctx.save();
+  ctx.lineCap = "round"; ctx.strokeStyle = col; ctx.shadowColor = col; ctx.shadowBlur = GLOW * 16 * DPR; ctx.lineWidth = 3 * DPR; ctx.globalAlpha = 0.9;
+  ctx.beginPath(); for (const [i, j] of CONN) { ctx.moveTo(P[i].x, P[i].y); ctx.lineTo(P[j].x, P[j].y); } ctx.stroke();
+  ctx.shadowBlur = 0; ctx.fillStyle = "#fff";
+  for (const p of P) { ctx.beginPath(); ctx.arc(p.x, p.y, 2.6 * DPR, 0, 7); ctx.fill(); }
+  if (h.trail.length > 1) {
+    for (let i = 1; i < h.trail.length; i++) {
+      const a = S(h.trail[i - 1]), b = S(h.trail[i]), age = (now - h.trail[i].t) / 450;
+      ctx.strokeStyle = col; ctx.globalAlpha = (1 - age) * 0.8; ctx.lineWidth = (10 * (1 - age) + 1) * DPR;
+      ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
+    }
+  }
+  ctx.globalAlpha = 1;
+  const pp = S(h.pp), pr = clamp(1 - (h.pinchRaw - 0.3) / 0.7);
+  ctx.strokeStyle = col; ctx.lineWidth = 2 * DPR; ctx.shadowColor = col; ctx.shadowBlur = GLOW * (h.pinch ? 30 * DPR : 6 * DPR);
+  ctx.beginPath(); ctx.arc(pp.x, pp.y, (h.pinch ? 14 : 22 - pr * 8) * DPR, 0, 7); ctx.stroke();
+  if (h.pinch) { ctx.fillStyle = col; ctx.globalAlpha = 0.5; ctx.fill(); ctx.globalAlpha = 1; }
+  ctx.shadowBlur = 0; ctx.font = font(700, 12); ctx.fillStyle = col; ctx.textAlign = "center";
+  let label = "";
+  if (h.id === "L") label = h.pinch ? "FILTER" : (h.fingers === 0 ? "FIST" : `${Math.max(0, h.fingers)} ✋`);
+  else {
+    const m = state.mode;
+    if (m === "fx") label = h.pinch ? "FX" : "FX · pinch";
+    else if (!h.pinch) label = MODES.find(x => x[0] === m)[1].toUpperCase();
+    else if (m === "lead" || m === "bass") label = noteName(scaleMidi(R.held ?? 0, m === "lead" ? 4 : 2));
+    else if (m === "chords" || m === "arp") label = chordName(R.held ?? 0) + (m === "arp" ? ` ×${arp.oct}` : "");
+    else if (m === "theremin") label = R.thMidi ? noteName(Math.round(R.thMidi)) : "";
+  }
+  ctx.fillText(label, P[0].x, P[0].y + 30 * DPR);
+  ctx.restore();
+}
+function drawHUD(now) {
+  const W = cv.width, H = cv.height, n = 16, cell = Math.min(26 * DPR, (W * 0.5) / n), gap = 5 * DPR;
+  const total = n * cell + (n - 1) * gap, x0 = (W - total) / 2, y = H - cell - 24 * DPR;
+  const pat = getPattern(state.kit, Math.max(1, Math.min(state.fingerLayers, state.cap)));
+  for (let i = 0; i < n; i++) {
+    const x = x0 + i * (cell + gap), on = i === ui.step;
+    const hasKick = (pat.kick && pat.kick[i]) || (pat.k808 && pat.k808[i]) || (pat.dagga && pat.dagga[i]);
+    rr(x, y, cell, cell, 6 * DPR);
+    ctx.fillStyle = on ? (state.dropped ? COL.warn : COL.acc) : hasKick && state.fingerLayers && !state.dropped ? "rgba(34,211,238,.28)" : (i % 4 === 0 ? "rgba(255,255,255,.12)" : "rgba(255,255,255,.05)");
+    ctx.fill();
+  }
+  ctx.font = font(600, 11); ctx.textAlign = "left"; ctx.fillStyle = "rgba(236,236,244,.7)";
+  const keyTxt = `${NOTE_NAMES[state.key]} ${state.scale}`;
+  ctx.fillText(`${keyTxt}  ·  ${Math.round(Tone.Transport.bpm.value)} BPM  ·  BAR ${ui.bar + 1}`, 16 * DPR, H - 18 * DPR);
+  ctx.textAlign = "right";
+  const ls = { idle: "", armed: "LOOP ARMED", rec: "● LOOP REC", play: `LOOP ▶ ${loop.events.length} notes`, odarm: "OVERDUB ARMED", od: "● OVERDUB" }[loop.state];
+  const right = [state.recOn ? "● REC" : "", ls, `SCENE ${state.scene.toUpperCase()}`, `${ui.fps} fps`].filter(Boolean).join("  ·  ");
+  ctx.fillStyle = state.recOn || isRecLoop() ? COL.warn : "rgba(236,236,244,.7)";
+  ctx.fillText(right, W - 16 * DPR, H - 18 * DPR);
+  if (isRecLoop() || loop.state === "play" || loop.state === "odarm") {
+    const prog = mod((ui.bar * 16 + Math.max(0, ui.step)) - loop.start, loop.len) / loop.len;
+    ctx.fillStyle = "rgba(255,255,255,.08)"; ctx.fillRect(x0, y - 10 * DPR, total, 3 * DPR);
+    ctx.fillStyle = isRecLoop() ? COL.warn : COL.acc; ctx.fillRect(x0, y - 10 * DPR, total * prog, 3 * DPR);
+  }
+}
+
+/* ================= main loop ================= */
+let frames = 0, fpsT = performance.now();
+function frame() {
+  requestAnimationFrame(frame);
+  const now = performance.now();
+  if (landmarker && video.readyState >= 2 && video.currentTime !== lastVideoTime) {
+    lastVideoTime = video.currentTime;
+    let res = null; try { res = landmarker.detectForVideo(video, now); } catch (e) { res = null; }
+    if (res) processHands(res, now);
+    frames++;
+  }
+  if (now - fpsT > 1000) { ui.fps = frames; frames = 0; fpsT = now; }
+  updateLost(now); calStep(now); control(now); draw(now);
+  if (Tone.Transport.state !== "started" && state.started) ui.step = -1;
+}
+
+/* ================= UI wiring ================= */
+function fillSelect(el, items, val) { el.innerHTML = items.map(([v, t]) => `<option value="${v}">${t}</option>`).join(""); el.value = val; }
+fillSelect($("#key"), NOTE_NAMES.map((n, i) => [i, n]), state.key);
+fillSelect($("#scale"), Object.keys(SCALES).map(s => [s, s]), state.scale);
+fillSelect($("#kit"), Object.keys(KITS).map(k => [k, k]), state.kit);
+fillSelect($("#chordSound"), CHORD_SOUNDS.map(s => [s, s]), state.chordSound);
+$("#bpm").value = state.bpm; $("#bpmVal").textContent = state.bpm;
+$("#modes").innerHTML = MODES.map(([k, t], i) => `<button data-m="${k}" title="Key ${i + 1}">${t}</button>`).join("");
+$("#scenes").innerHTML = SCENES.map((s, i) => `<button data-s="${s}" title="Key ${"ZXCVB"[i]}">${s}</button>`).join("");
+
+function setMode(m) { if (m === state.mode) return; releaseRight(); R.zone = null; state.mode = m; refreshUI(); toast(MODES.find(x => x[0] === m)[1].toUpperCase(), "var(--R)"); }
+function refreshUI() {
+  document.querySelectorAll("#modes button").forEach(b => b.classList.toggle("on", b.dataset.m === state.mode));
+  document.querySelectorAll("#scenes button").forEach(b => b.classList.toggle("on", b.dataset.s === state.scene));
+  const lb = $("#loopBtn"); lb.className = "";
+  const L = { idle: ["Loop", ""], armed: ["Loop: armed", "armed"], rec: ["● Recording loop", "live"], play: ["Loop ▶ · overdub", "play"], odarm: ["Overdub: armed", "armed"], od: ["● Overdubbing", "live"] }[loop.state];
+  lb.textContent = L[0]; if (L[1]) lb.classList.add(L[1]);
+  const rb = $("#recBtn"); rb.textContent = state.recOn ? "■ Stop rec" : "● Rec"; rb.classList.toggle("live", state.recOn);
+  $("#quantBtn").textContent = "Quantize: " + (state.quant ? "on" : "off");
+  $("#chordSound").parentElement.style.opacity = (state.mode === "chords") ? 1 : 0.45;
+}
+$("#modes").onclick = e => { const m = e.target.dataset.m; if (m) setMode(m); };
+$("#scenes").onclick = e => { const s = e.target.dataset.s; if (s && A.mix) setScene(s); };
+$("#key").onchange = e => { releaseRight(); state.key = +e.target.value; store.set("key", state.key); };
+$("#scale").onchange = e => { releaseRight(); state.scale = e.target.value; R.zone = null; store.set("scale", state.scale); };
+$("#kit").onchange = e => { state.kit = e.target.value; store.set("kit", state.kit); if (A.mix) applyKit(); };
+$("#chordSound").onchange = e => { releaseRight(); state.chordSound = e.target.value; store.set("chordSound", state.chordSound); if (A.voices) rebuildChordVoices(); };
+$("#bpm").oninput = e => { state.bpm = +e.target.value; $("#bpmVal").textContent = state.bpm; store.set("bpm", state.bpm); if (A.mix) Tone.Transport.bpm.rampTo(state.bpm, 0.2); };
+$("#quantBtn").onclick = () => { state.quant = !state.quant; store.set("quant", state.quant); refreshUI(); };
+$("#loopBtn").onclick = () => A.mix && loopToggle();
+$("#loopClr").onclick = () => A.mix && loopClear();
+$("#recBtn").onclick = () => toggleRec();
+$("#calBtn").onclick = () => startCal();
+$("#panicBtn").onclick = () => panic();
+$("#fsBtn").onclick = () => toggleFS();
+$("#helpBtn").onclick = () => $("#help").classList.add("show");
+$("#helpClose").onclick = () => $("#help").classList.remove("show");
+$("#help").onclick = e => { if (e.target.id === "help") $("#help").classList.remove("show"); };
+
+async function toggleRec() {
+  if (!A.recorder) return;
+  if (!state.recOn) { try { A.recorder.start(); state.recOn = true; toast("● RECORDING", "var(--warn)"); } catch (e) { toast("Recording not supported here", "var(--warn)"); } }
+  else {
+    state.recOn = false;
+    try {
+      const blob = await A.recorder.stop(); const url = URL.createObjectURL(blob);
+      const d = new Date(), stamp = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, "0")}${String(d.getDate()).padStart(2, "0")}-${String(d.getHours()).padStart(2, "0")}${String(d.getMinutes()).padStart(2, "0")}`;
+      const a = document.createElement("a"); a.href = url; a.download = `gesture-synth-${stamp}.webm`; document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 60000); toast("SAVED RECORDING", "var(--acc)");
+    } catch (e) { toast("Could not save recording", "var(--warn)"); }
+  }
+  refreshUI();
+}
+function panic() {
+  if (!A.voices) return;
+  releaseRight();
+  for (const set of [A.voices, A.loopVoices]) for (const k in set) { try { const v = set[k]; v.mono ? v.s.triggerRelease() : v.s.releaseAll(); } catch (e) {} }
+  riserRelease(); state.riser.on = false; state.riser.stopPending = false;
+  state.dropped = false; state.dropPending = false; state.undropPending = false; state.build = null; state.buildPending = false;
+  try {
+    A.drumMute.gain.rampTo(1, 0.05); A.djLP.frequency.rampTo(20000, 0.05); A.djHP.frequency.cancelScheduledValues(Tone.now()); A.djHP.frequency.rampTo(20, 0.05);
+    A.drumFilter.frequency.rampTo(20000, 0.05); A.revSend.gain.rampTo(0.15, 0.1); A.dlySend.gain.rampTo(0.08, 0.1); A.delay.feedback.rampTo(0.35, 0.1);
+  } catch (e) {}
+  pCache.clear(); ui.drumF = 20000; toast("PANIC · all clear");
+}
+function toggleFS() { try { if (!document.fullscreenElement) document.documentElement.requestFullscreen(); else document.exitFullscreen(); } catch (e) {} }
+function togglePlay() {
+  if (!A.mix) return;
+  if (Tone.Transport.state === "started") { Tone.Transport.pause(); releaseRight(); toast("PAUSED"); }
+  else { Tone.Transport.start("+0.05"); toast("PLAY", "var(--acc)"); }
+}
+addEventListener("keydown", e => {
+  if (e.target.tagName === "SELECT" || e.target.tagName === "INPUT" || e.repeat || !state.started) return;
+  const k = e.key.toLowerCase();
+  if (k >= "1" && k <= "6") setMode(MODES[+k - 1][0]);
+  else if ("zxcvb".includes(k) && k.length === 1) setScene(SCENES["zxcvb".indexOf(k)]);
+  else if (k === "l") loopToggle();
+  else if (k === "k") loopClear();
+  else if (k === "r") toggleRec();
+  else if (k === "p") panic();
+  else if (k === "f") toggleFS();
+  else if (k === "h") $("#help").classList.toggle("show");
+  else if (k === " ") { e.preventDefault(); togglePlay(); }
+});
+
+/* ================= mobile helpers ================= */
+let wakeLock = null;
+async function keepAwake() { try { if ("wakeLock" in navigator && document.visibilityState === "visible") wakeLock = await navigator.wakeLock.request("screen"); } catch (e) {} }
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible" && state.started) { keepAwake(); try { if (Tone.getContext().state !== "running") Tone.start(); } catch (e) {} }
+});
+$("#menuBtn").onclick = e => { e.stopPropagation(); const b = $("#bar"); b.classList.toggle("open"); $("#menuBtn").textContent = b.classList.contains("open") ? "✕" : "☰"; };
+cv.addEventListener("pointerdown", () => { const b = $("#bar"); if (b.classList.contains("open")) { b.classList.remove("open"); $("#menuBtn").textContent = "☰"; } });
+if ("serviceWorker" in navigator && location.protocol === "https:") { addEventListener("load", () => navigator.serviceWorker.register("sw.js").catch(() => {})); }
+
+/* ================= start ================= */
+const status = t => $("#status").textContent = t;
+$("#startBtn").onclick = async () => {
+  const btn = $("#startBtn"); btn.disabled = true;
+  try {
+    if (typeof Tone === "undefined") throw new Error("Audio library didn't load. Check your internet connection and reload.");
+    status("Starting audio…");
+    await Tone.start();
+    try { Tone.getContext().lookAhead = 0.03; } catch (e) {}
+    buildAudio(); applyKit();
+    Tone.Transport.bpm.value = state.bpm;
+    Tone.Transport.scheduleRepeat(tick, "16n");
+
+    status("Opening camera…");
+    if (!window.isSecureContext || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) throw new Error("Camera needs a secure link. Open the https:// GitHub Pages link in Chrome or Safari.");
+    let stream;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ audio: false, video: IS_MOBILE ? { facingMode: "user", width: { ideal: 640 }, height: { ideal: 480 }, aspectRatio: { ideal: innerWidth / innerHeight }, frameRate: { ideal: 30, max: 30 } } : { facingMode: "user", width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 60, max: 60 } } });
+    } catch (e) { throw new Error("Camera blocked. Click the camera icon in the address bar, allow access, then press START again."); }
+    video.srcObject = stream; await video.play();
+
+    status("Loading hand tracking model (first time takes a few seconds)…");
+    try { landmarker = await createLandmarker("GPU"); }
+    catch (e) { status("GPU not available, switching to CPU…"); landmarker = await createLandmarker("CPU"); }
+
+    $("#start").style.display = "none"; $("#bar").classList.remove("hidden");
+    state.started = true; refreshUI(); keepAwake();
+    Tone.Transport.start("+0.1");
+    if (!store.get("seenHelp", false)) { $("#help").classList.add("show"); store.set("seenHelp", true); }
+    requestAnimationFrame(frame);
+  } catch (e) {
+    console.error(e); status("⚠ " + (e.message || e)); btn.disabled = false;
+  }
+};
+// preview render behind the start card
+(function idle() { if (!state.started) { draw(performance.now()); requestAnimationFrame(idle); } })();
+</script>
+</body>
+</html>
